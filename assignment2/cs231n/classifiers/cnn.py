@@ -51,11 +51,21 @@ class ThreeLayerConvNet(object):
         # IMPORTANT: For this assignment, you can assume that the padding          #
         # and stride of the first convolutional layer are chosen so that           #
         # **the width and height of the input are preserved**. Take a look at      #
-        # the start of the loss() function to see how that happens.                #                           
+        # the start of the loss() function to see how that happens.                #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        C, H, W = input_dim
+        self.params["W1"] = weight_scale * \
+            np.random.randn(num_filters, C, filter_size, filter_size)
+        self.params["b1"] = np.zeros(num_filters)
+        # after maxpool there will be (H / 2)*(W / 2) weights in one filter
+        self.params["W2"] = weight_scale * \
+            np.random.randn(int((H / 2)*(W / 2)*num_filters), hidden_dim)
+        self.params["b2"] = np.zeros(hidden_dim)
+        self.params["W3"] = weight_scale * \
+            np.random.randn(hidden_dim, num_classes)
+        self.params["b3"] = np.zeros(num_classes)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -64,7 +74,6 @@ class ThreeLayerConvNet(object):
 
         for k, v in self.params.items():
             self.params[k] = v.astype(dtype)
-
 
     def loss(self, X, y=None):
         """
@@ -94,8 +103,12 @@ class ThreeLayerConvNet(object):
         # cs231n/layer_utils.py in your implementation (already imported).         #
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+        # conv - relu - 2x2 max pool - affine - relu - affine - softmax
 
-        pass
+        scores, sandwich1_cache = conv_relu_pool_forward(
+            X, W1, b1, conv_param, pool_param)
+        scores, sandwich2_cache = affine_relu_forward(scores, W2, b2)
+        scores, affine_cache = affine_forward(scores, W3, b3)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -118,7 +131,19 @@ class ThreeLayerConvNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        loss, dscores = softmax_loss(scores, y)
+        loss += 0.5 * self.reg * np.sum(W3*W3)
+        dx, dw, db = affine_backward(dscores, affine_cache)
+        grads["W3"] = dw + self.reg * W3
+        grads["b3"] = db
+        dx, dw, db = affine_relu_backward(dx, sandwich2_cache)
+        grads["W2"] = dw + self.reg * W2
+        grads["b2"] = db
+        loss += 0.5 * self.reg * np.sum(W2*W2)
+        dx, dw, db = conv_relu_pool_backward(dx, sandwich1_cache)
+        grads["W1"] = dw + self.reg * W1
+        grads["b1"] = db
+        loss += 0.5 * self.reg * np.sum(W1*W1)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
