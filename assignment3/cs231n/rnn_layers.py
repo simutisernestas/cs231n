@@ -36,7 +36,8 @@ def rnn_step_forward(x, prev_h, Wx, Wh, b):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    next_h = np.tanh(prev_h.dot(Wh) + x.dot(Wx) + b)
+    cache = (x, prev_h, next_h, Wx, Wh, b)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -68,8 +69,20 @@ def rnn_step_backward(dnext_h, cache):
     # of the output value from tanh.                                             #
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
+    (x, prev_h, next_h, Wx, Wh, b) = cache
 
-    pass
+    dx, dprev_h, dWx, dWh, db = np.zeros_like(x), np.zeros_like(prev_h), \
+        np.zeros_like(Wx), np.zeros_like(Wh), \
+        np.zeros_like(b)
+
+    dtanh = 1 - next_h**2
+    dtanh_next = dtanh * dnext_h
+
+    dWx = np.dot(x.T, dtanh_next)
+    dWh = np.dot(prev_h.T, dtanh_next)
+    dx = np.dot(dtanh_next, Wx.T)
+    dprev_h = np.dot(dtanh_next, Wh.T)
+    db = np.sum(dtanh_next, axis=0)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -104,7 +117,15 @@ def rnn_forward(x, h0, Wx, Wh, b):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, T, D = x.shape
+    H = b.shape[0]
+    h = np.zeros((N, T, H))
+    prev_h = h0
+    cache = []
+    for t in range(T):
+        prev_h, c = rnn_step_forward(x[:, t, :], prev_h, Wx, Wh, b)
+        h[:, t, :] = prev_h
+        cache.append(c)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -119,7 +140,7 @@ def rnn_backward(dh, cache):
 
     Inputs:
     - dh: Upstream gradients of all hidden states, of shape (N, T, H). 
-    
+
     NOTE: 'dh' contains the upstream gradients produced by the 
     individual loss functions at each timestep, *not* the gradients
     being passed between timesteps (which you'll have to compute yourself
@@ -140,7 +161,20 @@ def rnn_backward(dh, cache):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    (N, T, H) = dh.shape
+    _dx, _dprev_h, dWx, dWh, db = rnn_step_backward(dh[:, T-1, :], cache[-1])
+    D = _dx.shape[1]
+    dx = np.zeros((N, T, D))
+    dx[:, T-1, :] = _dx
+    for t in reversed(range(T-1)):
+        _dx, _dprev_h, _dWx, _dWh, _db = rnn_step_backward(
+            dh[:, t, :] + _dprev_h, cache[t])
+        dx[:, t, :] = _dx
+        dprev_h = _dprev_h
+        dWx += _dWx
+        dWh += _dWh
+        db += _db
+    dh0 = dprev_h
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -172,7 +206,8 @@ def word_embedding_forward(x, W):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    out = W[x]
+    cache = (x, W)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -205,7 +240,11 @@ def word_embedding_backward(dout, cache):
     ##############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    x, W = cache
+    (N, T, D) = dout.shape
+    V = W.shape[0]
+    dW = np.zeros((V, D))
+    np.add.at(dW, x, dout)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -257,7 +296,24 @@ def lstm_step_forward(x, prev_h, prev_c, Wx, Wh, b):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    a = x.dot(Wx) + prev_h.dot(Wh) + b
+    (N, H) = prev_h.shape
+
+    a[:, :H] = sigmoid(a[:, :H])
+    a[:, H:2*H] = sigmoid(a[:, H:2*H])
+    a[:, 2*H:3*H] = sigmoid(a[:, 2*H:3*H])
+    a[:, 3*H:4*H] = np.tanh(a[:, 3*H:4*H])
+
+    i = a[:, :H]
+    f = a[:, H:2*H]
+    o = a[:, 2*H:3*H]
+    g = a[:, 3*H:4*H]
+
+    next_c = f * prev_c + i * g
+    next_c_tanh = np.tanh(next_c)
+    next_h = o * next_c_tanh
+
+    cache = (x, prev_h, prev_c, Wx, Wh, b, a, next_c_tanh)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -293,7 +349,39 @@ def lstm_step_backward(dnext_h, dnext_c, cache):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    # https://github.com/jariasf/CS231n/blob/master/assignment3/cs231n/rnn_layers.py
+
+    N, H = dnext_h.shape
+    (x, prev_h, prev_c, Wx, Wh, b, h, next_c_tanh) = cache
+
+    dx, dprev_h, dWx, dWh, db = np.zeros_like(x), np.zeros_like(prev_h), \
+        np.zeros_like(Wx), np.zeros_like(Wh), \
+        np.zeros_like(b)
+
+    i, f, o, g = h[:, :H], h[:, H:2*H], h[:, 2*H:3*H], h[:, 3*H:4*H]
+
+    # dgate contains gradients w.r.t. each gate
+    dgate = h.copy()
+    # sigmoid gradient
+    dgate[:, :3*H] = dgate[:, :3*H] * (1 - dgate[:, :3*H])
+    # tanh gradient
+    dgate[:, 3*H:4*H] = 1 - dgate[:, 3*H:4*H]**2
+    dnc_tanh = 1 - next_c_tanh**2
+
+    # calculate gradients in common
+    dnc_prod = dnext_h * o * dnc_tanh + dnext_c
+    dgate[:, :H] *= dnc_prod * g
+    dgate[:, H:2*H] *= dnc_prod * prev_c
+    dgate[:, 2*H:3*H] *= dnext_h * next_c_tanh
+    dgate[:, 3*H:4*H] *= dnc_prod * i
+
+    # calculate final gradients
+    dx = dgate.dot(Wx.T)
+    dprev_h = dgate.dot(Wh.T)
+    dprev_c = dnext_c * f + dnext_h * o * dnc_tanh * f
+    dWx = x.T.dot(dgate)
+    dWh = prev_h.T.dot(dgate)
+    db = dgate.sum(axis=0)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -332,7 +420,17 @@ def lstm_forward(x, h0, Wx, Wh, b):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    N, T, D = x.shape
+    N, H = h0.shape
+    h = np.zeros((N, T, H))
+    prev_h = h0
+    prev_c = np.zeros_like(h0)
+    cache = []
+    for t in range(T):
+        prev_h, prev_c, ch = lstm_step_forward(
+            x[:, t, :], prev_h, prev_c, Wx, Wh, b)
+        h[:, t, :] = prev_h
+        cache.append(ch)
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -364,7 +462,20 @@ def lstm_backward(dh, cache):
     #############################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    (N, T, H) = dh.shape
+    _dx, _dprev_h, _dprev_c, dWx, dWh, db = lstm_step_backward(
+        dh[:, T-1, :], np.zeros((N, H)), cache[-1])
+    D = _dx.shape[1]
+    dx = np.zeros((N, T, D))
+    dx[:, T-1, :] = _dx
+    for t in reversed(range(T-1)):
+        _dx, _dprev_h, _dprev_c, _dWx, _dWh, _db = lstm_step_backward(
+            dh[:, t, :] + _dprev_h, _dprev_c, cache[t])
+        dx[:, t, :] = _dx
+        dWx += _dWx
+        dWh += _dWh
+        db += _db
+    dh0 = _dprev_h
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ##############################################################################
@@ -462,7 +573,8 @@ def temporal_softmax_loss(x, y, mask, verbose=False):
     dx_flat /= N
     dx_flat *= mask_flat[:, None]
 
-    if verbose: print('dx_flat: ', dx_flat.shape)
+    if verbose:
+        print('dx_flat: ', dx_flat.shape)
 
     dx = dx_flat.reshape(N, T, V)
 

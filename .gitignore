@@ -5,3 +5,11 @@ assignment2/.ipynb_checkpoints/
 assignment2/cs231n/.vscode/
 assignment2/cs231n/im2col_cython.cpython-36m-x86_64-linux-gnu.so
 assignment3/.vscode/
+assignment3/.ipynb_checkpoints/
+assignment3/cs231n/datasets/coco_captioning/
+assignment3/cs231n/datasets/imagenet_val_25.npz
+assignment3/cs231n/datasets/imagenet_val_25.npz.1
+assignment3/cs231n/datasets/squeezenet.ckpt.data-00000-of-00001
+assignment3/cs231n/datasets/squeezenet.ckpt.index
+assignment3/venv/
+
